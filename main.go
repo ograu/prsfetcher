@@ -212,6 +212,7 @@ func updateGithub(PRNumber string, provider string, statusOrURL string) {
 	hasComment, idComment, bodyComment := getComment(PRNumber)
 
 	if !hasComment {
+		// TODO get the id and use it in the patch, so instead a IF/ELSE the else part has to be done always
 		createPRComment(PRNumber)
 	} else {
 		// PATCH comment
