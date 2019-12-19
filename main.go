@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
 )
 
 // This is for unmarshalling the PRs API call response.
@@ -25,18 +26,24 @@ type githubPRData struct {
 	PullRequest  int
 	CommitSHA    string
 	ChecksPassed bool
+	// Status       string
 }
+
+// Config
+var (
+	organization = "ograu"      // "giantswarm"
+	repo         = "prsfetcher" // "happa"
+	accessToken  = os.Getenv("PRSFETCHER_GITHUB_TOKEN")
+	// See: https://developer.github.com/v3/pulls/
+	pullRequestsEndpoint = fmt.Sprintf("https://api.github.com/repos/%s/%s/pulls", organization, repo)
+)
+
+// func main() {
+// 	fmt.Printf("Access token: %s", accessToken)
+// }
 
 // It returns a list of commit sha 's of all open and green PR's
 func main() {
-	// Config
-	organization := "giantswarm"
-	repo := "happa"
-	// See: https://developer.github.com/v3/pulls/
-	pullRequestsEndpoint := fmt.Sprintf("https://api.github.com/repos/%s/%s/pulls", organization, repo)
-
-	// TODO authorization
-
 	// PRs API call
 	body, err := fetch(pullRequestsEndpoint)
 
@@ -79,9 +86,9 @@ func main() {
 		}
 
 		// Last one seems to be the first one
-		if data[0].State == "success" {
-			allPRsData = append(allPRsData, prsData)
-		}
+		// if data[0].State == "success" {
+		allPRsData = append(allPRsData, prsData)
+		// }
 
 	}
 
@@ -92,7 +99,20 @@ func main() {
 }
 
 func fetch(endpoint string) ([]byte, error) {
-	resp, err := http.Get(endpoint)
+	// Create a Bearer string by appending string access token
+	var bearer = "Bearer " + accessToken
+
+	// Create a new request using http
+	req, err := http.NewRequest("GET", endpoint, nil)
+
+	// add authorization header to the req
+	req.Header.Add("Authorization", bearer)
+
+	// Send req using http Client
+	client := &http.Client{}
+	resp, err := client.Do(req)
+
+	// resp, err := http.Get(endpoint)
 	bodyBytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
