@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 )
 
@@ -25,18 +26,20 @@ type githubPRData struct {
 	PullRequest  int
 	CommitSHA    string
 	ChecksPassed bool
+	// Status       string
 }
+
+// Config
+var (
+	organization = "giantswarm"
+	repo         = "happa"
+	accessToken  = "whatever"
+	// See: https://developer.github.com/v3/pulls/
+	pullRequestsEndpoint = fmt.Sprintf("https://api.github.com/repos/%s/%s/pulls", organization, repo)
+)
 
 // It returns a list of commit sha 's of all open and green PR's
 func main() {
-	// Config
-	organization := "giantswarm"
-	repo := "happa"
-	// See: https://developer.github.com/v3/pulls/
-	pullRequestsEndpoint := fmt.Sprintf("https://api.github.com/repos/%s/%s/pulls", organization, repo)
-
-	// TODO authorization
-
 	// PRs API call
 	body, err := fetch(pullRequestsEndpoint)
 
@@ -102,4 +105,25 @@ func fetch(endpoint string) ([]byte, error) {
 
 	var body = []byte(bodyBytes)
 	return body, nil
+}
+
+func post(endpoint string) error {
+	// Create a Bearer string by appending string access token
+	var bearer = "Bearer " + accessToken
+
+	// Create a new request using http
+	req, err := http.NewRequest("POST", endpoint, nil)
+
+	// add authorization header to the req
+	req.Header.Add("Authorization", bearer)
+
+	// Send req using http Client
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("Error on response.\n[ERRO] -", err)
+	}
+
+	body, _ := ioutil.ReadAll(resp.Body)
+	log.Println(string([]byte(body)))
 }
