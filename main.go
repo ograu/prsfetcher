@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -33,19 +34,16 @@ type githubPRData struct {
 var (
 	organization = "ograu"      // "giantswarm"
 	repo         = "prsfetcher" // "happa"
-	accessToken  = os.Getenv("PRSFETCHER_GITHUB_TOKEN")
+	// Create a Bearer string by appending string access token
+	bearer = "Bearer " + os.Getenv("PRSFETCHER_GITHUB_TOKEN")
 	// See: https://developer.github.com/v3/pulls/
 	pullRequestsEndpoint = fmt.Sprintf("https://api.github.com/repos/%s/%s/pulls", organization, repo)
 )
 
-// func main() {
-// 	fmt.Printf("Access token: %s", accessToken)
-// }
-
 // It returns a list of commit sha 's of all open and green PR's
 func main() {
 	// PRs API call
-	body, err := fetch(pullRequestsEndpoint)
+	body, err := getAPICall(pullRequestsEndpoint)
 
 	if err != nil {
 		fmt.Printf("The HTTP request failed with error %s\n", err)
@@ -72,7 +70,7 @@ func main() {
 		}
 
 		// Statuses API call
-		body, err := fetch(v.StatusesURL)
+		body, err := getAPICall(v.StatusesURL)
 		if err != nil {
 			fmt.Printf("Error reading the response %s\n", err)
 			panic(err)
@@ -98,10 +96,7 @@ func main() {
 	}
 }
 
-func fetch(endpoint string) ([]byte, error) {
-	// Create a Bearer string by appending string access token
-	var bearer = "Bearer " + accessToken
-
+func getAPICall(endpoint string) ([]byte, error) {
 	// Create a new request using http
 	req, err := http.NewRequest("GET", endpoint, nil)
 
@@ -121,5 +116,36 @@ func fetch(endpoint string) ([]byte, error) {
 	defer resp.Body.Close()
 
 	var body = []byte(bodyBytes)
+	return body, nil
+}
+
+// https://developer.github.com/v3/issues/comments/#create-a-comment
+func createPRComment(PRNumber string, URL string) ([]byte, error) {
+	createPRCommentEndpoint := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues/%s/comments", organization, repo, PRNumber)
+
+	type Comment struct {
+		Body string `json:"body"`
+	}
+	comment := Comment{"This branch is deployed somewhere " + URL}
+	jsonStr, err := json.Marshal(comment)
+
+	req, err := http.NewRequest("POST", createPRCommentEndpoint, bytes.NewBuffer(jsonStr))
+	req.Header.Add("Authorization", bearer)
+	req.Header.Set("X-Custom-Header", "myvalue")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/vnd.github.comfort-fade-preview+json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+
+	fmt.Println("response Status:", resp.Status)
+	fmt.Println("response Headers:", resp.Header)
+	body, _ := ioutil.ReadAll(resp.Body)
+	fmt.Println("response Body:", string(body))
+
 	return body, nil
 }
