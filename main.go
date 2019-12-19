@@ -110,30 +110,7 @@ func main() {
 	// TODO Check which ones are not yet deployed and deploy them.
 }
 
-func getAPICall(endpoint string) ([]byte, error) {
-	// Create a new request using http
-	req, err := http.NewRequest("GET", endpoint, nil)
-
-	// add authorization header to the req
-	req.Header.Add("Authorization", bearer)
-
-	// Send req using http Client
-	client := &http.Client{}
-	resp, err := client.Do(req)
-
-	// resp, err := http.Get(endpoint)
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	defer resp.Body.Close()
-
-	var body = []byte(bodyBytes)
-	return body, nil
-}
-
-// // This function looks for the App PR Deployer *comment* in a PR.
+// This function looks for the App PR Deployer *comment* in a PR.
 func getComment(PRNumber string) (bool, string, string) {
 	commentsEndpoint := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues/%s/comments", organization, repo, PRNumber)
 	body, err := getAPICall(commentsEndpoint)
@@ -169,6 +146,7 @@ func getComment(PRNumber string) (bool, string, string) {
 	return hasComment, idComment, bodyComment
 }
 
+// Creates a comment in a PR/issue
 // https://developer.github.com/v3/issues/comments/#create-a-comment
 func createPRComment(PRNumber string) ([]byte, error) {
 	commentsEndpoint := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues/%s/comments", organization, repo, PRNumber)
@@ -180,14 +158,12 @@ AWS:   Not initialized
 Azure: Not initialized
 KVM:   Not initialized`
 
-	// comment := Comment{"This branch is deployed here: " + URL}
 	comment := comment{text}
 
 	jsonStr, err := json.Marshal(comment)
 
 	req, err := http.NewRequest("POST", commentsEndpoint, bytes.NewBuffer(jsonStr))
 	req.Header.Add("Authorization", bearer)
-	// req.Header.Set("X-Custom-Header", "myvalue")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/vnd.github.comfort-fade-preview+json")
 
@@ -198,15 +174,12 @@ KVM:   Not initialized`
 	}
 	defer resp.Body.Close()
 
-	// fmt.Println("response Status:", resp.Status)
-	// fmt.Println("response Headers:", resp.Header)
 	body, _ := ioutil.ReadAll(resp.Body)
-	// fmt.Println("response Body:", string(body))
 
 	return body, nil
 }
 
-// This function takes the initial message and "patches" it with the current info
+// Takes a comment message text and updates it with the current info
 func editComment(provider string, statusOrURL string, comment string) string {
 	// Split string in lines and  modify them
 	slicedComment := strings.Split(comment, "\n")
@@ -233,7 +206,7 @@ func editComment(provider string, statusOrURL string, comment string) string {
 	return reunitedComment
 }
 
-// TODO Check whith ones are *being* deployed and update comment in PR accordigly.
+// TODO Check which ones are *being* deployed and update comment in PR accordigly.
 // This function is called from installations
 func updateGithub(PRNumber string, provider string, statusOrURL string) {
 	hasComment, idComment, bodyComment := getComment(PRNumber)
@@ -259,4 +232,27 @@ func updateGithub(PRNumber string, provider string, statusOrURL string) {
 		}
 		defer resp.Body.Close()
 	}
+}
+
+// Utility function for making get API calls
+func getAPICall(endpoint string) ([]byte, error) {
+	// Create a new request using http
+	req, err := http.NewRequest("GET", endpoint, nil)
+
+	// add authorization header to the req
+	req.Header.Add("Authorization", bearer)
+
+	// Send req using http Client
+	client := &http.Client{}
+	resp, err := client.Do(req)
+
+	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+
+	var body = []byte(bodyBytes)
+	return body, nil
 }
