@@ -84,9 +84,9 @@ func main() {
 		}
 
 		// Last one seems to be the first one
-		// if data[0].State == "success" {
-		allPRsData = append(allPRsData, prsData)
-		// }
+		if data[0].State == "success" {
+			allPRsData = append(allPRsData, prsData)
+		}
 
 	}
 
@@ -126,7 +126,7 @@ func createPRComment(PRNumber string, URL string) ([]byte, error) {
 	type Comment struct {
 		Body string `json:"body"`
 	}
-	comment := Comment{"This branch is deployed somewhere " + URL}
+	comment := Comment{"This branch is deployed here: " + URL}
 	jsonStr, err := json.Marshal(comment)
 
 	req, err := http.NewRequest("POST", createPRCommentEndpoint, bytes.NewBuffer(jsonStr))
