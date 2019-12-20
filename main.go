@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // This is for unmarshalling the PRs API call response.
@@ -51,8 +52,31 @@ var (
 	pullRequestsEndpoint = fmt.Sprintf("https://api.github.com/repos/%s/%s/pulls", organization, repo)
 )
 
-// It returns a list of commit sha 's of all open and green PR's
 func main() {
+	ticker := time.NewTicker(10 * time.Second)
+
+	go func() {
+		for c := ticker.C; ; <-c {
+			greenPRs, error := getPRs()
+			if error != nil {
+				fmt.Printf("Couldn't get green PRs %s\n", error)
+				panic(error)
+			}
+			// e.logger.Log("debug", "Fetching deployment events", "projectlist", e.projectList)
+			for _, pr := range greenPRs {
+				// TODO check if this SHA is deployed or being deployed
+				// if this is deployed, break
+				// if this hasn't been deployed yet, deploy it and update comment message
+				// if it is being deployed, update the message
+
+				fmt.Printf("PR number: %v", pr.PRNumber)
+			}
+		}
+	}()
+}
+
+// It returns a list of commit sha 's of all open and green PR's
+func getPRs() ([]prsData, error) {
 	// PRs API call
 	body, err := getAPICall(pullRequestsEndpoint)
 
@@ -108,6 +132,8 @@ func main() {
 	}
 
 	// TODO Check which ones are not yet deployed and deploy them.
+
+	return allGreenPRs, nil
 }
 
 // This function looks for the App PR Deployer *comment* in a PR.
