@@ -7,9 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
-	"time"
 )
 
 // This is for unmarshalling the PRs API call response.
@@ -33,13 +31,17 @@ type prsData struct {
 	// Status       string
 }
 
-type commentsFetchedData []struct {
+type commentFetchedData struct {
 	ID   int    `json:"id"`
 	Body string `json:"body"`
 }
 
 type comment struct {
 	Body string `json:"body"`
+}
+
+type commentID struct {
+	ID int `json:"id"`
 }
 
 // Config
@@ -50,29 +52,15 @@ var (
 	bearer = "Bearer " + os.Getenv("PRSFETCHER_GITHUB_TOKEN")
 	// See: https://developer.github.com/v3/pulls/
 	pullRequestsEndpoint = fmt.Sprintf("https://api.github.com/repos/%s/%s/pulls", organization, repo)
+	defaultComment       = `### App PR Deployer
+	
+AWS:   Not initialized
+Azure: Not initialized
+KVM:   Not initialized`
 )
 
 func main() {
-	ticker := time.NewTicker(10 * time.Second)
-
-	go func() {
-		for c := ticker.C; ; <-c {
-			greenPRs, error := getPRs()
-			if error != nil {
-				fmt.Printf("Couldn't get green PRs %s\n", error)
-				panic(error)
-			}
-			// e.logger.Log("debug", "Fetching deployment events", "projectlist", e.projectList)
-			for _, pr := range greenPRs {
-				// TODO check if this SHA is deployed or being deployed
-				// if this is deployed, break
-				// if this hasn't been deployed yet, deploy it and update comment message
-				// if it is being deployed, update the message
-
-				fmt.Printf("PR number: %v", pr.PRNumber)
-			}
-		}
-	}()
+	getPRs()
 }
 
 // It returns a list of commit sha 's of all open and green PR's
@@ -136,55 +124,33 @@ func getPRs() ([]prsData, error) {
 	return allGreenPRs, nil
 }
 
-// This function looks for the App PR Deployer *comment* in a PR.
-func getComment(PRNumber string) (bool, string, string) {
-	commentsEndpoint := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues/%s/comments", organization, repo, PRNumber)
+func getCommentByID(id int) (string, error) {
+	commentsEndpoint := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues/comments/%v", organization, repo, id)
 	body, err := getAPICall(commentsEndpoint)
 
 	if err != nil {
-		fmt.Printf("Couldn't fetch comments %s\n", err)
+		fmt.Printf("Couldn't fetch comment %s\n", err)
 		panic(err)
 	}
 
 	// Our array of PR comments fetched
-	var data commentsFetchedData
+	var data commentFetchedData
 
 	errData := json.Unmarshal(body, &data)
 	if errData != nil {
-		fmt.Printf("Couldn't unmarshall comments %s\n", err)
+		fmt.Printf("Couldn't unmarshall comment %s\n", err)
 		panic(err)
 	}
 
-	// Flag for knowing if it has an App PR Deployer comment
-	var hasComment bool
-	var idComment string
-	var bodyComment string
-
-	for _, v := range data {
-		if strings.HasPrefix(v.Body, "### App PR Deployer") {
-			hasComment = true
-			idComment = strconv.Itoa(v.ID)
-			bodyComment = v.Body
-		}
-	}
-
-	// TODO struct?
-	return hasComment, idComment, bodyComment
+	return data.Body, nil
 }
 
 // Creates a comment in a PR/issue
 // https://developer.github.com/v3/issues/comments/#create-a-comment
-func createPRComment(PRNumber string) ([]byte, error) {
+func createPRComment(PRNumber string, commentText string) (int, error) {
 	commentsEndpoint := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues/%s/comments", organization, repo, PRNumber)
 
-	text := `### App PR Deployer
-Comment revision: 2
-
-AWS:   Not initialized
-Azure: Not initialized
-KVM:   Not initialized`
-
-	comment := comment{text}
+	comment := comment{commentText}
 
 	jsonStr, err := json.Marshal(comment)
 
@@ -201,8 +167,17 @@ KVM:   Not initialized`
 	defer resp.Body.Close()
 
 	body, _ := ioutil.ReadAll(resp.Body)
+	// Comment
+	var data commentID
 
-	return body, nil
+	errData := json.Unmarshal(body, &data)
+	if errData != nil {
+		panic(err)
+	}
+
+	fmt.Println(data.ID)
+
+	return data.ID, nil
 }
 
 // Takes a comment message text and updates it with the current info
@@ -211,15 +186,15 @@ func editComment(provider string, statusOrURL string, comment string) string {
 	slicedComment := strings.Split(comment, "\n")
 
 	if provider == "AWS" {
-		slicedComment[3] = "AWS: " + statusOrURL
+		slicedComment[2] = "AWS: " + statusOrURL
 	}
 
 	if provider == "Azure" {
-		slicedComment[4] = "Azure: " + statusOrURL
+		slicedComment[3] = "Azure: " + statusOrURL
 	}
 
 	if provider == "KVM" {
-		slicedComment[5] = "KVM: " + statusOrURL
+		slicedComment[4] = "KVM: " + statusOrURL
 	}
 
 	var reunitedComment string
@@ -234,16 +209,19 @@ func editComment(provider string, statusOrURL string, comment string) string {
 
 // TODO Check which ones are *being* deployed and update comment in PR accordigly.
 // This function is called from installations
-func updateGithub(PRNumber string, provider string, statusOrURL string) {
-	hasComment, idComment, bodyComment := getComment(PRNumber)
+func updateGithub(PRNumber string, idComment int, provider string, statusOrURL string) {
+	// hasComment, idComment, bodyComment := getComment(PRNumber)
+	var hasComment bool
 
-	if !hasComment {
-		// TODO use the message from edit comment, otherwise the very first update is skipped
-		createPRComment(PRNumber)
+	if hasComment {
+		// Use default message and modify it
+		newComment := editComment(provider, statusOrURL, defaultComment)
+		createPRComment(PRNumber, newComment)
 	} else {
-		// PATCH comment
+		// Or PATCH it
+		bodyComment, _ := getCommentByID(idComment)
 		newComment := editComment(provider, statusOrURL, bodyComment)
-		commentsEndpoint := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues/comments/%s", organization, repo, idComment)
+		commentsEndpoint := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues/comments/%v", organization, repo, idComment)
 		commentBody := comment{newComment}
 
 		jsonStr, err := json.Marshal(commentBody)
